@@ -1,0 +1,5 @@
+.env
+pictures/
+KawaiiBot*
+*.exe
+AGENTS.md
