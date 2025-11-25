@@ -13,6 +13,9 @@ import (
 	"time"
 
 	"KawaiiBot/api"
+	"KawaiiBot/scheduler"
+	"KawaiiBot/storage"
+	"KawaiiBot/webhook"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -26,11 +29,14 @@ const (
 
 // Bot represents the Discord bot
 type Bot struct {
-	session     *discordgo.Session
-	nekosAPI    *api.Client
-	waifuAPI    *api.WaifuClient
-	fileMutex   sync.Mutex
-	activeFiles map[string]time.Time
+	session      *discordgo.Session
+	nekosAPI     *api.Client
+	waifuAPI     *api.WaifuClient
+	fileMutex    sync.Mutex
+	activeFiles  map[string]time.Time
+	storage      *storage.Storage
+	dailyWebhook *webhook.DailyWebhook
+	scheduler    *scheduler.Scheduler
 }
 
 // New creates a new bot instance
@@ -48,11 +54,31 @@ func New(token string) (*Bot, error) {
 	// MessageContent intent is now enabled in Discord Developer Portal
 	dg.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsDirectMessages | discordgo.IntentsMessageContent | discordgo.IntentsGuilds
 
+	// Initialize storage
+	storageInstance, err := storage.New("bot_settings.json")
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize storage: %w", err)
+	}
+
+	// Initialize API clients
+	nekosAPI := api.New(userAgent)
+	waifuAPI := api.NewWaifuClient(userAgent)
+
+	// Initialize webhook and scheduler
+	dailyWebhook := webhook.New(nekosAPI, waifuAPI)
+	schedulerInstance := scheduler.New(dailyWebhook)
+
+	// Sync webhook enabled state with storage
+	dailyWebhook.SetEnabled(storageInstance.GetDailyWebhookEnabled())
+
 	bot := &Bot{
-		session:     dg,
-		nekosAPI:    api.New(userAgent),
-		waifuAPI:    api.NewWaifuClient(userAgent),
-		activeFiles: make(map[string]time.Time),
+		session:      dg,
+		nekosAPI:     nekosAPI,
+		waifuAPI:     waifuAPI,
+		activeFiles:  make(map[string]time.Time),
+		storage:      storageInstance,
+		dailyWebhook: dailyWebhook,
+		scheduler:    schedulerInstance,
 	}
 
 	// Register handlers
@@ -77,11 +103,21 @@ func (b *Bot) Start(ctx context.Context) error {
 	// Start cleanup routine
 	go b.cleanupRoutine(ctx)
 
+	// Start scheduler
+	if err := b.scheduler.Start(ctx); err != nil {
+		fmt.Printf("Warning: failed to start scheduler: %v\n", err)
+	}
+
 	return nil
 }
 
 // Stop closes the websocket connection and cleans up
 func (b *Bot) Stop(ctx context.Context) error {
+	// Stop scheduler
+	if err := b.scheduler.Stop(); err != nil {
+		fmt.Printf("Warning: failed to stop scheduler: %v\n", err)
+	}
+
 	// Unregister commands
 	if err := b.unregisterCommands(); err != nil {
 		fmt.Printf("Warning: failed to unregister commands: %v\n", err)
@@ -223,7 +259,7 @@ func (b *Bot) handleCatgirlMessageCommand(s *discordgo.Session, m *discordgo.Mes
 	// Parse command arguments
 	args := strings.Fields(m.Content)
 
-	var count int = 1 // Default count = 1     // Default count
+	var count int = 1     // Default count = 1     // Default count
 	var nsfw string = "n" // Default to SFW
 
 	// Parse count argument
@@ -292,7 +328,7 @@ func (b *Bot) handleWaifuMessageCommand(s *discordgo.Session, m *discordgo.Messa
 	// Parse arguments - handle flexible positioning
 	for i := 1; i < len(args); i++ {
 		arg := strings.ToLower(args[i])
-		
+
 		// Check if this is a number (count)
 		if parsedCount, err := strconv.Atoi(arg); err == nil && parsedCount >= 1 && parsedCount <= 10 {
 			if !countSet {
@@ -357,6 +393,11 @@ func (b *Bot) handleHelpMessageCommand(s *discordgo.Session, m *discordgo.Messag
 		"• **count**: 1-10 pictures (optional, defaults to 1)\n" +
 		"• **nsfw**: `y/yes` or `n/no` (optional, defaults to no)\n" +
 		"• **gif**: `y/yes` or `n/no` (optional, defaults to no)\n\n" +
+		"**📅 Daily Webhook**\n" +
+		"├ `!webhook` - Toggle daily webhook (message command)\n" +
+		"└ `/webhook` - Toggle daily webhook (slash command)\n" +
+		"• Sends 1 waifu + 1 catgirl picture daily at midnight\n" +
+		"• Requires `WEBHOOK_URL` environment variable\n\n" +
 		"### 💡 Tips\n" +
 		"• Arguments can be in any order!\n" +
 		"• Examples: `!waifu y`, `!waifu 5 y`, `!waifu y 3 n`\n" +
@@ -364,6 +405,37 @@ func (b *Bot) handleHelpMessageCommand(s *discordgo.Session, m *discordgo.Messag
 		"*Powered by Nekos.moe API & Waifu.im* 💕"
 
 	s.ChannelMessageSend(m.ChannelID, helpText)
+}
+
+// handleWebhookMessageCommand handles the !webhook message command
+func (b *Bot) handleWebhookMessageCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
+	// Check if webhook URL is configured
+	_, url := b.dailyWebhook.GetStatus()
+	if url == "" {
+		s.ChannelMessageSend(m.ChannelID, "❌ Daily webhook is not configured. Please set the `WEBHOOK_URL` environment variable.")
+		return
+	}
+
+	// Toggle the webhook status
+	newState, err := b.storage.ToggleDailyWebhookEnabled()
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("❌ Failed to toggle webhook: %v", err))
+		return
+	}
+
+	// Update the webhook enabled state
+	b.dailyWebhook.SetEnabled(newState)
+
+	// Create response message
+	status := "disabled"
+	emoji := "🔴"
+	if newState {
+		status = "enabled"
+		emoji = "🟢"
+	}
+
+	response := fmt.Sprintf("%s Daily webhook is now **%s**!\n\n📅 **Schedule**: Every day at midnight\n🌸 **Content**: 1 waifu + 1 catgirl picture\n🔗 **Webhook URL**: `%s`", emoji, status, url)
+	s.ChannelMessageSend(m.ChannelID, response)
 }
 
 // messageHandler handles regular message commands
@@ -382,6 +454,8 @@ func (b *Bot) messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		b.handleWaifuMessageCommand(s, m)
 	} else if strings.HasPrefix(m.Content, "!help") {
 		b.handleHelpMessageCommand(s, m)
+	} else if strings.HasPrefix(m.Content, "!webhook") {
+		b.handleWebhookMessageCommand(s, m)
 	}
 }
 
@@ -395,7 +469,7 @@ func (b *Bot) registerCommands() error {
 				{
 					Type:        discordgo.ApplicationCommandOptionInteger,
 					Name:        "count",
-					Description: "Number of pictures (1-100)",
+					Description: "Number of pictures (1-10)",
 					Required:    false,
 					MinValue:    &[]float64{1}[0],
 					MaxValue:    10,
@@ -425,7 +499,7 @@ func (b *Bot) registerCommands() error {
 				{
 					Type:        discordgo.ApplicationCommandOptionInteger,
 					Name:        "count",
-					Description: "Number of pictures (1-30)",
+					Description: "Number of pictures (1-10)",
 					Required:    false,
 					MinValue:    &[]float64{1}[0],
 					MaxValue:    10,
@@ -467,6 +541,10 @@ func (b *Bot) registerCommands() error {
 		{
 			Name:        "help",
 			Description: "Show help information about the bot",
+		},
+		{
+			Name:        "webhook",
+			Description: "Toggle daily webhook for waifu/catgirl pictures",
 		},
 	}
 
@@ -512,6 +590,8 @@ func (b *Bot) interactionHandler(s *discordgo.Session, i *discordgo.InteractionC
 		b.handleWaifuSlashCommand(s, i, data)
 	case "help":
 		b.handleHelpSlashCommand(s, i)
+	case "webhook":
+		b.handleWebhookSlashCommand(s, i)
 	}
 }
 
@@ -762,6 +842,10 @@ func (b *Bot) handleHelpSlashCommand(s *discordgo.Session, i *discordgo.Interact
 		"• **count**: 1-10 pictures (required)\n" +
 		"• **nsfw**: `y/yes` or `n/no` (optional, defaults to no)\n" +
 		"• **gif**: `y/yes` or `n/no` (optional, defaults to no)\n\n" +
+		"**📅 Daily Webhook**\n" +
+		"`/webhook` - Toggle daily webhook\n" +
+		"• Sends 1 waifu + 1 catgirl picture daily at midnight\n" +
+		"• Requires `WEBHOOK_URL` environment variable\n\n" +
 		"*Powered by Nekos.moe API & Waifu.im* 💕"
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -823,6 +907,53 @@ func (b *Bot) cleanupRoutine(ctx context.Context) {
 	}
 }
 
+// handleWebhookSlashCommand handles the /webhook slash command
+func (b *Bot) handleWebhookSlashCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Check if webhook URL is configured
+	_, url := b.dailyWebhook.GetStatus()
+	if url == "" {
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "❌ Daily webhook is not configured. Please set the `WEBHOOK_URL` environment variable.",
+			},
+		})
+		return
+	}
+
+	// Toggle the webhook status
+	newState, err := b.storage.ToggleDailyWebhookEnabled()
+	if err != nil {
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: fmt.Sprintf("❌ Failed to toggle webhook: %v", err),
+			},
+		})
+		return
+	}
+
+	// Update the webhook enabled state
+	b.dailyWebhook.SetEnabled(newState)
+
+	// Create response message
+	status := "disabled"
+	emoji := "🔴"
+	if newState {
+		status = "enabled"
+		emoji = "🟢"
+	}
+
+	response := fmt.Sprintf("%s Daily webhook is now **%s**!\n\n📅 **Schedule**: Every day at midnight\n🌸 **Content**: 1 waifu + 1 catgirl picture\n🔗 **Webhook URL**: `%s`", emoji, status, url)
+
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: response,
+		},
+	})
+}
+
 func (b *Bot) cleanupOldFiles() {
 	b.fileMutex.Lock()
 	defer b.fileMutex.Unlock()
@@ -834,3 +965,4 @@ func (b *Bot) cleanupOldFiles() {
 		}
 	}
 }
+
