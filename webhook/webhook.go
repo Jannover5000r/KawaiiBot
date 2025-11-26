@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"sync"
 	"time"
 
@@ -27,6 +28,11 @@ type DailyWebhook struct {
 // New creates a new DailyWebhook instance
 func New(nekosAPI *api.Client, waifuAPI *api.WaifuClient) *DailyWebhook {
 	webhookURL := os.Getenv("WEBHOOK_URL")
+	
+	// Validate webhook URL format if provided
+	if webhookURL != "" && !isValidDiscordWebhookURL(webhookURL) {
+		log.Printf("[WEBHOOK] Warning: WEBHOOK_URL does not appear to be a valid Discord webhook URL: %s", webhookURL)
+	}
 	
 	dw := &DailyWebhook{
 		webhookURL: webhookURL,
@@ -92,23 +98,54 @@ func (dw *DailyWebhook) SendDailyWebhook() error {
 		return fmt.Errorf("daily webhook is disabled")
 	}
 
-	log.Println("Sending daily webhook...")
+	log.Println("[WEBHOOK] Starting daily webhook send process...")
+	log.Printf("[WEBHOOK] Webhook URL: %s", dw.webhookURL)
 
-	// Fetch one waifu image
+	// Always get random content (mixed SFW/NSFW) by not specifying NSFW preference
+	log.Println("[WEBHOOK] Fetching random waifu image...")
+	
+	// For waifu.im, we'll try passing false as a neutral option to get mixed results
 	waifuImages, err := dw.waifuAPI.GetWaifuImages(1, false, false)
 	if err != nil {
 		return fmt.Errorf("failed to fetch waifu image: %w", err)
 	}
+	log.Printf("[WEBHOOK] Fetched %d waifu images", len(waifuImages))
+	
+	// Validate waifu image URLs
+	if len(waifuImages) > 0 {
+		log.Printf("[WEBHOOK] Waifu image details: ID=%d, URL=%s, Extension=%s, NSFW=%t", 
+			waifuImages[0].ImageID, waifuImages[0].URL, waifuImages[0].Extension, waifuImages[0].IsNSFW)
+	}
 
-	// Fetch one catgirl image
-	catgirlImages, err := dw.nekosAPI.GetRandomImages(1, "safe")
+	// Fetch one catgirl image - use empty rating to get random mixed content
+	log.Println("[WEBHOOK] Fetching random catgirl image...")
+	catgirlImages, err := dw.nekosAPI.GetRandomImages(1, "")
 	if err != nil {
 		return fmt.Errorf("failed to fetch catgirl image: %w", err)
 	}
+	log.Printf("[WEBHOOK] Fetched %d catgirl images", len(catgirlImages))
+	
+	// Validate catgirl image URLs
+	if len(catgirlImages) > 0 {
+		catgirlURL := fmt.Sprintf("https://nekos.moe/image/%s.jpg", catgirlImages[0].ID)
+		log.Printf("[WEBHOOK] Catgirl image details: ID=%s, Constructed URL=%s, NSFW=%t", 
+			catgirlImages[0].ID, catgirlURL, catgirlImages[0].NSFW)
+	}
 
-	// Create webhook payload
+	// Build content with fallback URLs in case embeds fail
+	content := "## 🌸 Your daily motivational waifu/catgirl 🌸\n*Starting your day with some kawaii energy!* 💕\n🎲 *Today's random selection!* 🎲"
+	
+	// Add direct URLs to content as fallback
+	if len(waifuImages) > 0 {
+		content += fmt.Sprintf("\n\n**💜 Daily Waifu:** %s", waifuImages[0].URL)
+	}
+	if len(catgirlImages) > 0 {
+		content += fmt.Sprintf("\n**🐱 Daily Catgirl:** https://nekos.moe/image/%s.jpg", catgirlImages[0].ID)
+	}
+
+	// Create webhook payload with both embeds and fallback URLs
 	payload := WebhookPayload{
-		Content: "## 🌸 Your daily motivational waifu/catgirl 🌸\n*Starting your day with some kawaii energy!* 💕",
+		Content: content,
 		Embeds:  []WebhookEmbed{},
 	}
 
@@ -135,6 +172,7 @@ func (dw *DailyWebhook) SendDailyWebhook() error {
 	}
 
 	// Send webhook
+	log.Println("[WEBHOOK] Sending webhook payload...")
 	return dw.sendWebhook(payload)
 }
 
@@ -145,6 +183,9 @@ func (dw *DailyWebhook) sendWebhook(payload WebhookPayload) error {
 		return fmt.Errorf("failed to marshal webhook payload: %w", err)
 	}
 
+	log.Printf("[WEBHOOK] Creating HTTP request to: %s", dw.webhookURL)
+	log.Printf("[WEBHOOK] Payload size: %d bytes", len(jsonData))
+
 	req, err := http.NewRequest("POST", dw.webhookURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create webhook request: %w", err)
@@ -153,11 +194,14 @@ func (dw *DailyWebhook) sendWebhook(payload WebhookPayload) error {
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 30 * time.Second}
+	log.Println("[WEBHOOK] Sending HTTP request...")
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send webhook: %w", err)
 	}
 	defer resp.Body.Close()
+
+	log.Printf("[WEBHOOK] Webhook response status: %d", resp.StatusCode)
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("webhook returned status code %d", resp.StatusCode)
@@ -167,7 +211,7 @@ func (dw *DailyWebhook) sendWebhook(payload WebhookPayload) error {
 	dw.lastSent = time.Now()
 	dw.mutex.Unlock()
 
-	log.Println("Daily webhook sent successfully!")
+	log.Println("[WEBHOOK] Daily webhook sent successfully!")
 	return nil
 }
 
@@ -176,4 +220,18 @@ func (dw *DailyWebhook) GetLastSent() time.Time {
 	dw.mutex.RLock()
 	defer dw.mutex.RUnlock()
 	return dw.lastSent
+}
+
+// isValidDiscordWebhookURL checks if the URL appears to be a valid Discord webhook URL
+func isValidDiscordWebhookURL(url string) bool {
+	// Discord webhook URLs should match this pattern:
+	// https://discord.com/api/webhooks/{webhook.id}/{webhook.token}
+	// or https://discordapp.com/api/webhooks/{webhook.id}/{webhook.token}
+	pattern := `^https://(?:discord\.com|discordapp\.com)/api/webhooks/\d+/[a-zA-Z0-9_-]+$`
+	matched, err := regexp.MatchString(pattern, url)
+	if err != nil {
+		log.Printf("[WEBHOOK] Error validating webhook URL: %v", err)
+		return false
+	}
+	return matched
 }

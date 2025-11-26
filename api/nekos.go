@@ -60,10 +60,13 @@ func (c *Client) GetRandomImages(count int, rating string) ([]Image, error) {
 	endpoint := fmt.Sprintf("random/image?count=%d", count)
 
 	// For Nekos.moe, use nsfw=true/false instead of rating parameter
-	if rating == "explicit" {
-		endpoint += "&nsfw=true"
-	} else {
-		endpoint += "&nsfw=false" // Default to SFW
+	// If rating is empty, omit the nsfw parameter to get mixed results
+	if rating != "" {
+		if rating == "explicit" {
+			endpoint += "&nsfw=true"
+		} else {
+			endpoint += "&nsfw=false" // Default to SFW for "safe" or any other value
+		}
 	}
 
 	// Nekos.moe random endpoint doesn't support tags, so we ignore them for random images

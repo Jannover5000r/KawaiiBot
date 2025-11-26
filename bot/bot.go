@@ -396,7 +396,7 @@ func (b *Bot) handleHelpMessageCommand(s *discordgo.Session, m *discordgo.Messag
 		"**📅 Daily Webhook**\n" +
 		"├ `!webhook` - Toggle daily webhook (message command)\n" +
 		"└ `/webhook` - Toggle daily webhook (slash command)\n" +
-		"• Sends 1 waifu + 1 catgirl picture daily at midnight\n" +
+		"• Sends 1 waifu + 1 catgirl picture daily at 5 AM\n" +
 		"• Requires `WEBHOOK_URL` environment variable\n\n" +
 		"### 💡 Tips\n" +
 		"• Arguments can be in any order!\n" +
@@ -434,7 +434,7 @@ func (b *Bot) handleWebhookMessageCommand(s *discordgo.Session, m *discordgo.Mes
 		emoji = "🟢"
 	}
 
-	response := fmt.Sprintf("%s Daily webhook is now **%s**!\n\n📅 **Schedule**: Every day at midnight\n🌸 **Content**: 1 waifu + 1 catgirl picture\n🔗 **Webhook URL**: `%s`", emoji, status, url)
+	response := fmt.Sprintf("%s Daily webhook is now **%s**!\n\n📅 **Schedule**: Every day at 5 AM\n🌸 **Content**: 1 waifu + 1 catgirl picture\n🔗 **Webhook URL**: `%s`", emoji, status, url)
 	s.ChannelMessageSend(m.ChannelID, response)
 }
 

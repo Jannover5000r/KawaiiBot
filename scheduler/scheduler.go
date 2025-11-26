@@ -74,13 +74,13 @@ func (s *Scheduler) Stop() error {
 
 // schedulingRoutine runs the main scheduling loop
 func (s *Scheduler) schedulingRoutine(ctx context.Context) {
-	// Calculate time until next midnight
-	timeUntilMidnight := s.getTimeUntilMidnight()
+	// Calculate time until next 5 AM
+	timeUntil5AM := s.getTimeUntil5AM()
 	
-	log.Printf("First daily webhook will be sent in %v", timeUntilMidnight)
+	log.Printf("First daily webhook will be sent in %v", timeUntil5AM)
 	
-	// Create timer for first execution at midnight
-	timer := time.NewTimer(timeUntilMidnight)
+	// Create timer for first execution at 5 AM
+	timer := time.NewTimer(timeUntil5AM)
 	defer timer.Stop()
 	
 	for {
@@ -101,49 +101,56 @@ func (s *Scheduler) schedulingRoutine(ctx context.Context) {
 	}
 }
 
-// getTimeUntilMidnight calculates the time until the next midnight
-func (s *Scheduler) getTimeUntilMidnight() time.Duration {
+// getTimeUntil5AM calculates the time until the next 5 AM
+func (s *Scheduler) getTimeUntil5AM() time.Duration {
 	now := time.Now()
 	
-	// Calculate next midnight
-	nextMidnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+	// Calculate next 5 AM
+	next5AM := time.Date(now.Year(), now.Month(), now.Day(), 5, 0, 0, 0, now.Location())
 	
-	// If it's exactly midnight, send immediately
-	if now.Hour() == 0 && now.Minute() == 0 && now.Second() == 0 {
-		return 0
+	// If current time is already past 5 AM today, set to 5 AM tomorrow
+	if now.After(next5AM) || now.Equal(next5AM) {
+		next5AM = next5AM.Add(24 * time.Hour)
 	}
 	
-	return nextMidnight.Sub(now)
+	return next5AM.Sub(now)
 }
 
 // sendDailyWebhook sends the daily webhook
 func (s *Scheduler) sendDailyWebhook() {
-	log.Println("Sending daily webhook...")
+	log.Println("[SCHEDULER] Attempting to send daily webhook...")
 	
 	// Check if webhook is still enabled
 	if !s.dailyWebhook.IsEnabled() {
-		log.Println("Daily webhook is disabled, skipping")
+		log.Println("[SCHEDULER] Daily webhook is disabled, skipping")
 		return
 	}
+	
+	// Get webhook status for logging
+	enabled, url := s.dailyWebhook.GetStatus()
+	log.Printf("[SCHEDULER] Webhook status - Enabled: %v, URL configured: %v", enabled, url != "")
 	
 	// Send the webhook with retry logic
 	maxRetries := 3
 	for i := 0; i < maxRetries; i++ {
+		log.Printf("[SCHEDULER] Sending webhook (attempt %d/%d)...", i+1, maxRetries)
 		err := s.dailyWebhook.SendDailyWebhook()
 		if err == nil {
-			log.Println("Daily webhook sent successfully")
+			log.Println("[SCHEDULER] Daily webhook sent successfully")
 			return
 		}
 		
-		log.Printf("Failed to send daily webhook (attempt %d/%d): %v", i+1, maxRetries, err)
+		log.Printf("[SCHEDULER] Failed to send daily webhook (attempt %d/%d): %v", i+1, maxRetries, err)
 		
 		if i < maxRetries-1 {
 			// Wait before retrying (exponential backoff)
-			time.Sleep(time.Duration(i+1) * 5 * time.Minute)
+			waitTime := time.Duration(i+1) * 5 * time.Minute
+			log.Printf("[SCHEDULER] Waiting %v before retry...", waitTime)
+			time.Sleep(waitTime)
 		}
 	}
 	
-	log.Printf("Failed to send daily webhook after %d attempts", maxRetries)
+	log.Printf("[SCHEDULER] Failed to send daily webhook after %d attempts", maxRetries)
 }
 
 // IsRunning returns whether the scheduler is currently running
