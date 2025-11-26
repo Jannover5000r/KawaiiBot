@@ -92,11 +92,14 @@ func (s *Scheduler) schedulingRoutine(ctx context.Context) {
 			log.Println("Scheduler stopped by request")
 			return
 		case <-timer.C:
-			// It's midnight! Send the daily webhook
+			// It's 5 AM! Send the daily webhook
 			s.sendDailyWebhook()
 			
-			// Reset timer for next midnight (24 hours from now)
-			timer.Reset(24 * time.Hour)
+			// Reset timer for next 5 AM (24 hours from now)
+			// Calculate time until next 5 AM and reset timer
+				timeUntilNext5AM := s.getTimeUntil5AM()
+				log.Printf("Next daily webhook will be sent in %v", timeUntilNext5AM)
+				timer.Reset(timeUntilNext5AM)
 		}
 	}
 }
@@ -113,7 +116,9 @@ func (s *Scheduler) getTimeUntil5AM() time.Duration {
 		next5AM = next5AM.Add(24 * time.Hour)
 	}
 	
-	return next5AM.Sub(now)
+	timeUntil := next5AM.Sub(now)
+	log.Printf("[SCHEDULER] Current time: %s, Next 5 AM: %s, Time until: %v", now.Format("2006-01-02 15:04:05"), next5AM.Format("2006-01-02 15:04:05"), timeUntil)
+	return timeUntil
 }
 
 // sendDailyWebhook sends the daily webhook

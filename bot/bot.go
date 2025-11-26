@@ -844,7 +844,7 @@ func (b *Bot) handleHelpSlashCommand(s *discordgo.Session, i *discordgo.Interact
 		"• **gif**: `y/yes` or `n/no` (optional, defaults to no)\n\n" +
 		"**📅 Daily Webhook**\n" +
 		"`/webhook` - Toggle daily webhook\n" +
-		"• Sends 1 waifu + 1 catgirl picture daily at midnight\n" +
+		"• Sends 1 waifu + 1 catgirl picture daily at 5 AM\n" +
 		"• Requires `WEBHOOK_URL` environment variable\n\n" +
 		"*Powered by Nekos.moe API & Waifu.im* 💕"
 
@@ -944,7 +944,7 @@ func (b *Bot) handleWebhookSlashCommand(s *discordgo.Session, i *discordgo.Inter
 		emoji = "🟢"
 	}
 
-	response := fmt.Sprintf("%s Daily webhook is now **%s**!\n\n📅 **Schedule**: Every day at midnight\n🌸 **Content**: 1 waifu + 1 catgirl picture\n🔗 **Webhook URL**: `%s`", emoji, status, url)
+	response := fmt.Sprintf("%s Daily webhook is now **%s**!\n\n📅 **Schedule**: Every day at 5 AM\n🌸 **Content**: 1 waifu + 1 catgirl picture\n🔗 **Webhook URL**: `%s`", emoji, status, url)
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,

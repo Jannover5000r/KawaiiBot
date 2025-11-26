@@ -3,7 +3,7 @@
 ## Features
 
 - **Interactive Commands**: Get catgirl and waifu pictures on demand
-- **Daily Webhook**: Automatically sends motivational waifu/catgirl pictures daily at midnight
+- **Daily Webhook**: Automatically sends motivational waifu/catgirl pictures daily at 5 AM
 - **Flexible Options**: Choose between SFW/NSFW content, GIFs, and picture count
 - **Multiple Interfaces**: Both message commands (`!command`) and slash commands (`/command`)
 
