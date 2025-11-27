@@ -74,13 +74,13 @@ func (s *Scheduler) Stop() error {
 
 // schedulingRoutine runs the main scheduling loop
 func (s *Scheduler) schedulingRoutine(ctx context.Context) {
-	// Calculate time until next 5 AM
-	timeUntil5AM := s.getTimeUntil5AM()
+	// Calculate time until next midnight
+	timeUntilMidnight := s.getTimeUntilMidnight()
 	
-	log.Printf("First daily webhook will be sent in %v", timeUntil5AM)
+	log.Printf("First daily webhook will be sent in %v", timeUntilMidnight)
 	
-	// Create timer for first execution at 5 AM
-	timer := time.NewTimer(timeUntil5AM)
+	// Create timer for first execution at midnight
+	timer := time.NewTimer(timeUntilMidnight)
 	defer timer.Stop()
 	
 	for {
@@ -92,32 +92,27 @@ func (s *Scheduler) schedulingRoutine(ctx context.Context) {
 			log.Println("Scheduler stopped by request")
 			return
 		case <-timer.C:
-			// It's 5 AM! Send the daily webhook
+			// It's midnight! Send the daily webhook
 			s.sendDailyWebhook()
 			
-			// Reset timer for next 5 AM (24 hours from now)
-			// Calculate time until next 5 AM and reset timer
-				timeUntilNext5AM := s.getTimeUntil5AM()
-				log.Printf("Next daily webhook will be sent in %v", timeUntilNext5AM)
-				timer.Reset(timeUntilNext5AM)
+			// Reset timer for next midnight (24 hours from now)
+			// Calculate time until next midnight and reset timer
+				timeUntilNextMidnight := s.getTimeUntilMidnight()
+				log.Printf("Next daily webhook will be sent in %v", timeUntilNextMidnight)
+				timer.Reset(timeUntilNextMidnight)
 		}
 	}
 }
 
-// getTimeUntil5AM calculates the time until the next 5 AM
-func (s *Scheduler) getTimeUntil5AM() time.Duration {
+// getTimeUntilMidnight calculates the time until the next midnight
+func (s *Scheduler) getTimeUntilMidnight() time.Duration {
 	now := time.Now()
 	
-	// Calculate next 5 AM
-	next5AM := time.Date(now.Year(), now.Month(), now.Day(), 5, 0, 0, 0, now.Location())
+	// Calculate next midnight
+	nextMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Add(24 * time.Hour)
 	
-	// If current time is already past 5 AM today, set to 5 AM tomorrow
-	if now.After(next5AM) || now.Equal(next5AM) {
-		next5AM = next5AM.Add(24 * time.Hour)
-	}
-	
-	timeUntil := next5AM.Sub(now)
-	log.Printf("[SCHEDULER] Current time: %s, Next 5 AM: %s, Time until: %v", now.Format("2006-01-02 15:04:05"), next5AM.Format("2006-01-02 15:04:05"), timeUntil)
+	timeUntil := nextMidnight.Sub(now)
+	log.Printf("[SCHEDULER] Current time: %s, Next midnight: %s, Time until: %v", now.Format("2006-01-02 15:04:05"), nextMidnight.Format("2006-01-02 15:04:05"), timeUntil)
 	return timeUntil
 }
 
