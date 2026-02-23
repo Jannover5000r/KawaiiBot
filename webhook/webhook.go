@@ -38,7 +38,7 @@ func New(nekosAPI *api.Client, waifuAPI *api.WaifuClient) *DailyWebhook {
 		webhookURL: webhookURL,
 		nekosAPI:   nekosAPI,
 		waifuAPI:   waifuAPI,
-		enabled:    true, // Enabled if URL is configured
+		enabled:    true,
 	}
 
 	return dw
@@ -48,7 +48,7 @@ func New(nekosAPI *api.Client, waifuAPI *api.WaifuClient) *DailyWebhook {
 func (dw *DailyWebhook) IsEnabled() bool {
 	dw.mutex.RLock()
 	defer dw.mutex.RUnlock()
-	return dw.enabled && dw.webhookURL != ""
+	return dw.enabled
 }
 
 // SetEnabled sets the enabled status of the daily webhook
@@ -56,6 +56,7 @@ func (dw *DailyWebhook) SetEnabled(enabled bool) {
 	dw.mutex.Lock()
 	defer dw.mutex.Unlock()
 	dw.enabled = enabled
+	fmt.Println("WebHook enabled")
 }
 
 // Toggle toggles the enabled status of the daily webhook
@@ -63,6 +64,7 @@ func (dw *DailyWebhook) Toggle() bool {
 	dw.mutex.Lock()
 	defer dw.mutex.Unlock()
 	dw.enabled = !dw.enabled
+	log.Printf("changed Webhook to %t", dw.enabled)
 	return dw.enabled
 }
 

@@ -434,7 +434,7 @@ func (b *Bot) handleWebhookMessageCommand(s *discordgo.Session, m *discordgo.Mes
 		emoji = "🟢"
 	}
 
-	response := fmt.Sprintf("%s Daily webhook is now **%s**!\n\n📅 **Schedule**: Every day at midnight\n🌸 **Content**: 1 waifu + 1 catgirl picture\n🔗 **Webhook URL**: `%s`", emoji, status, url)
+	response := fmt.Sprintf("%s Daily webhook is now **%s**!\n\n📅 **Schedule**: Every day at 6\n🌸 **Content**: 1 waifu + 1 catgirl picture\n🔗 **Webhook URL**: `%s`", emoji, status, url)
 	s.ChannelMessageSend(m.ChannelID, response)
 }
 
@@ -546,6 +546,10 @@ func (b *Bot) registerCommands() error {
 			Name:        "webhook",
 			Description: "Toggle daily webhook for waifu/catgirl pictures",
 		},
+		{
+			Name:        "forceWebhook",
+			Description: "force send a WebHook for testing",
+		},
 	}
 
 	// Register commands globally
@@ -592,6 +596,8 @@ func (b *Bot) interactionHandler(s *discordgo.Session, i *discordgo.InteractionC
 		b.handleHelpSlashCommand(s, i)
 	case "webhook":
 		b.handleWebhookSlashCommand(s, i)
+	case "forceWebhook":
+		b.forceWebHookSlashCommand(s, i)
 	}
 }
 
@@ -844,7 +850,7 @@ func (b *Bot) handleHelpSlashCommand(s *discordgo.Session, i *discordgo.Interact
 		"• **gif**: `y/yes` or `n/no` (optional, defaults to no)\n\n" +
 		"**📅 Daily Webhook**\n" +
 		"`/webhook` - Toggle daily webhook\n" +
-		"• Sends 1 waifu + 1 catgirl picture daily at 5 AM\n" +
+		"• Sends 1 waifu + 1 catgirl picture daily at 6 AM\n" +
 		"• Requires `WEBHOOK_URL` environment variable\n\n" +
 		"*Powered by Nekos.moe API & Waifu.im* 💕"
 
@@ -852,6 +858,17 @@ func (b *Bot) handleHelpSlashCommand(s *discordgo.Session, i *discordgo.Interact
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: helpText,
+		},
+	})
+}
+
+func (b *Bot) forceWebHookSlashCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	infoText := "Forced to send WebHook"
+	b.scheduler.ForceSend()
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: infoText,
 		},
 	})
 }
@@ -965,4 +982,3 @@ func (b *Bot) cleanupOldFiles() {
 		}
 	}
 }
-
