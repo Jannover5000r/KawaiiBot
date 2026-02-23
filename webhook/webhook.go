@@ -17,30 +17,30 @@ import (
 
 // DailyWebhook handles the daily webhook functionality
 type DailyWebhook struct {
-	webhookURL    string
-	nekosAPI      *api.Client
-	waifuAPI      *api.WaifuClient
-	enabled       bool
-	mutex         sync.RWMutex
-	lastSent      time.Time
+	webhookURL string
+	nekosAPI   *api.Client
+	waifuAPI   *api.WaifuClient
+	enabled    bool
+	mutex      sync.RWMutex
+	lastSent   time.Time
 }
 
 // New creates a new DailyWebhook instance
 func New(nekosAPI *api.Client, waifuAPI *api.WaifuClient) *DailyWebhook {
 	webhookURL := os.Getenv("WEBHOOK_URL")
-	
+
 	// Validate webhook URL format if provided
 	if webhookURL != "" && !isValidDiscordWebhookURL(webhookURL) {
 		log.Printf("[WEBHOOK] Warning: WEBHOOK_URL does not appear to be a valid Discord webhook URL: %s", webhookURL)
 	}
-	
+
 	dw := &DailyWebhook{
 		webhookURL: webhookURL,
 		nekosAPI:   nekosAPI,
 		waifuAPI:   waifuAPI,
-		enabled:    webhookURL != "", // Enabled if URL is configured
+		enabled:    true, // Enabled if URL is configured
 	}
-	
+
 	return dw
 }
 
@@ -81,10 +81,10 @@ type WebhookPayload struct {
 
 // WebhookEmbed represents an embed in the webhook payload
 type WebhookEmbed struct {
-	Title       string  `json:"title,omitempty"`
-	Description string  `json:"description,omitempty"`
-	Image       *Image  `json:"image,omitempty"`
-	Color       int     `json:"color,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	Image       *Image `json:"image,omitempty"`
+	Color       int    `json:"color,omitempty"`
 }
 
 // Image represents an image in an embed
@@ -103,17 +103,17 @@ func (dw *DailyWebhook) SendDailyWebhook() error {
 
 	// Always get random content (mixed SFW/NSFW) by not specifying NSFW preference
 	log.Println("[WEBHOOK] Fetching random waifu image...")
-	
+
 	// For waifu.im, we'll try passing false as a neutral option to get mixed results
 	waifuImages, err := dw.waifuAPI.GetWaifuImages(1, false, false)
 	if err != nil {
 		return fmt.Errorf("failed to fetch waifu image: %w", err)
 	}
 	log.Printf("[WEBHOOK] Fetched %d waifu images", len(waifuImages))
-	
+
 	// Validate waifu image URLs
 	if len(waifuImages) > 0 {
-		log.Printf("[WEBHOOK] Waifu image details: ID=%d, URL=%s, Extension=%s, NSFW=%t", 
+		log.Printf("[WEBHOOK] Waifu image details: ID=%d, URL=%s, Extension=%s, NSFW=%t",
 			waifuImages[0].ImageID, waifuImages[0].URL, waifuImages[0].Extension, waifuImages[0].IsNSFW)
 	}
 
@@ -124,17 +124,17 @@ func (dw *DailyWebhook) SendDailyWebhook() error {
 		return fmt.Errorf("failed to fetch catgirl image: %w", err)
 	}
 	log.Printf("[WEBHOOK] Fetched %d catgirl images", len(catgirlImages))
-	
+
 	// Validate catgirl image URLs
 	if len(catgirlImages) > 0 {
 		catgirlURL := fmt.Sprintf("https://nekos.moe/image/%s.jpg", catgirlImages[0].ID)
-		log.Printf("[WEBHOOK] Catgirl image details: ID=%s, Constructed URL=%s, NSFW=%t", 
+		log.Printf("[WEBHOOK] Catgirl image details: ID=%s, Constructed URL=%s, NSFW=%t",
 			catgirlImages[0].ID, catgirlURL, catgirlImages[0].NSFW)
 	}
 
 	// Build content with fallback URLs in case embeds fail
 	content := "## 🌸 Your daily motivational waifu/catgirl 🌸\n*Starting your day with some kawaii energy!* 💕\n🎲 *Today's random selection!* 🎲"
-	
+
 	// Add direct URLs to content as fallback
 	if len(waifuImages) > 0 {
 		content += fmt.Sprintf("\n\n**💜 Daily Waifu:** %s", waifuImages[0].URL)
@@ -235,3 +235,4 @@ func isValidDiscordWebhookURL(url string) bool {
 	}
 	return matched
 }
+
