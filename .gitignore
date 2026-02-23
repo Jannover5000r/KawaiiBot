@@ -4,4 +4,4 @@ KawaiiBot*
 *.exe
 WEBHOOK*
 bot_settings.json
-
+settings/

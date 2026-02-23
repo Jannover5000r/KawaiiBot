@@ -55,7 +55,7 @@ func New(token string) (*Bot, error) {
 	dg.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsDirectMessages | discordgo.IntentsMessageContent | discordgo.IntentsGuilds
 
 	// Initialize storage
-	storageInstance, err := storage.New("bot_settings.json")
+	storageInstance, err := storage.New("settings/bot_settings.json")
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize storage: %w", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -68,15 +69,21 @@ func (s *Storage) save() error {
 	s.mutex.RLock()
 	data, err := json.MarshalIndent(s.settings, "", "  ")
 	s.mutex.RUnlock()
-
 	if err != nil {
 		return fmt.Errorf("failed to marshal settings: %w", err)
 	}
 
-	if err := os.WriteFile(s.filename, data, 0644); err != nil {
-		return fmt.Errorf("failed to write settings file: %w", err)
+	// ✅ Create parent directory if it doesn't exist
+	dir := filepath.Dir(s.filename)
+	if dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
 	}
 
+	if err := os.WriteFile(s.filename, data, 0o644); err != nil {
+		return fmt.Errorf("failed to write settings file: %w", err)
+	}
 	return nil
 }
 
@@ -116,3 +123,4 @@ func (s *Storage) GetAllSettings() Settings {
 	defer s.mutex.RUnlock()
 	return s.settings
 }
+
