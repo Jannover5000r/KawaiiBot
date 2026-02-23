@@ -863,12 +863,11 @@ func (b *Bot) handleHelpSlashCommand(s *discordgo.Session, i *discordgo.Interact
 }
 
 func (b *Bot) forceWebHookSlashCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	infoText := "Forced to send WebHook"
 	b.scheduler.ForceSend()
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: infoText,
+			Content: "force sending Webhook",
 		},
 	})
 }
