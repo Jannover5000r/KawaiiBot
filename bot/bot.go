@@ -195,14 +195,16 @@ func (b *Bot) sendWaifuImagesMessage(s *discordgo.Session, m *discordgo.MessageC
 		filename := fmt.Sprintf("waifu_%d_%d%s", img.ID, time.Now().Unix(), img.Extension)
 		filepath := filepath.Join(picturesDir, filename)
 
-		// Download the image
+		// Download the image using the URL from the API response
 		imageData, err := b.waifuAPI.DownloadWaifuImage(img.URL)
 		if err != nil {
+			fmt.Printf("Warning: failed to download waifu image %d: %v\n", img.ID, err)
 			continue
 		}
 
-		// Save to file
+		// Save to file (for debugging/cleanup)
 		if err := os.WriteFile(filepath, imageData, 0o644); err != nil {
+			fmt.Printf("Warning: failed to save waifu image %s: %v\n", filename, err)
 			continue
 		}
 
@@ -210,38 +212,46 @@ func (b *Bot) sendWaifuImagesMessage(s *discordgo.Session, m *discordgo.MessageC
 		b.trackFile(filename)
 
 		// Determine content type based on extension
-		contentType := "image/jpeg" // default
-		switch img.Extension {
+		contentType := "image/jpeg" // default fallback
+		switch strings.ToLower(img.Extension) {
 		case ".gif":
 			contentType = "image/gif"
 		case ".png":
 			contentType = "image/png"
 		case ".webp":
 			contentType = "image/webp"
+		case ".jpg", ".jpeg":
+			contentType = "image/jpeg"
 		}
 
-		// Create file
+		// Create discordgo.File with the downloaded data
 		files = append(files, &discordgo.File{
 			Name:        filename,
 			ContentType: contentType,
 			Reader:      bytes.NewReader(imageData),
 		})
 
-		// Schedule file deletion
+		// Schedule file deletion after sending
 		go b.scheduleFileDeletion(filename, "")
 	}
 
-	// Send message with files only (no text content)
+	// Only send if we have files to send
+	if len(files) == 0 {
+		s.ChannelMessageSend(m.ChannelID, "❌ Failed to download any images. Try again later.")
+		return
+	}
+
+	// Send message with files
 	_, err := s.ChannelMessageSendComplex(m.ChannelID, &discordgo.MessageSend{
 		Files: files,
 	})
+	// Fallback to URLs only if sending files completely fails
 	if err != nil {
-		// Fallback to URLs
+		fmt.Printf("Warning: failed to send waifu images as files, falling back to URLs: %v\n", err)
 		var urls []string
 		for _, img := range images {
 			urls = append(urls, img.URL)
 		}
-
 		s.ChannelMessageSend(m.ChannelID, strings.Join(urls, "\n"))
 	}
 }
