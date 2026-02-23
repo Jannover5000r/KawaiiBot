@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	waifuBaseURL = "https://api.waifu.im/search?"
+	waifuBaseURL = "https://api.waifu.im/images"
 )
 
 // WaifuClient represents the Waifu.im API client
@@ -19,34 +19,80 @@ type WaifuClient struct {
 	userAgent  string
 }
 
-// WaifuImage represents an image from the Waifu.im API
+type NSFWMode int
+
+const (
+	NSFWModeSFW NSFWMode = iota
+	NSFWModeNSFW
+	NSFWModeAll
+)
+
+type WaifuResponse struct {
+	Items           []WaifuImage `json:"items"`
+	PageNumber      int          `json:"pageNumber"`
+	TotalPages      int          `json:"totalPages"`
+	TotalCount      int          `json:"totalCount"`
+	MaxPageSize     int          `json:"maxPageSize"`
+	DefaultPageSize int          `json:"defaultPageSize"`
+	HasPreviousPage bool         `json:"hasPreviousPage"`
+	HasNextPage     bool         `json:"hasNextPage"`
+}
+type Artist struct {
+	ID           int     `json:"id"`
+	Name         string  `json:"name"`
+	Patreon      *string `json:"patreon"`
+	Pixiv        *string `json:"pixiv"`
+	Twitter      *string `json:"twitter"`
+	DeviantArt   *string `json:"deviantArt"`
+	ReviewStatus string  `json:"reviewStatus"`
+	CreatorID    *int    `json:"creatorId"`
+	ImageCount   int     `json:"imageCount"`
+}
 type WaifuImage struct {
-	Signature     string `json:"signature"`
-	Extension     string `json:"extension"`
-	ImageID       int    `json:"image_id"`
-	Favorites     int    `json:"favorites"`
-	DominantColor string `json:"dominant_color"`
-	Source        string `json:"source"`
-	Artist        interface{} `json:"artist"` // Can be null or string
-	UploadedAt    string `json:"uploaded_at"`
-	LikedAt       interface{} `json:"liked_at"` // Can be null or string
-	IsNSFW        bool   `json:"is_nsfw"`
-	Width         int    `json:"width"`
-	Height        int    `json:"height"`
-	ByteSize      int    `json:"byte_size"`
-	URL           string `json:"url"`
-	PreviewURL    string `json:"preview_url"`
-	Tags          []struct {
-		TagID       int    `json:"tag_id"`
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		IsNSFW      bool   `json:"is_nsfw"`
-	} `json:"tags"`
+	ID             int64    `json:"id"`
+	PerceptualHash string   `json:"perceptualHash"`
+	Extension      string   `json:"extension"`
+	DominantColor  string   `json:"dominantColor"`
+	Source         string   `json:"source"`
+	Artists        []Artist `json:"artists"`
+	UploaderID     *int64   `json:"uploaderId"`
+	UploadedAt     string   `json:"uploadedAt"`
+	IsNSFW         bool     `json:"isNsfw"`
+	IsAnimated     bool     `json:"isAnimated"`
+	Width          int      `json:"width"`
+	Height         int      `json:"height"`
+	ByteSize       int      `json:"byteSize"`
+	URL            string   `json:"url"`
+	Tags           []Tag    `json:"tags"`
+	ReviewStatus   string   `json:"reviewStatus"`
+	Favorites      int      `json:"favorites"`
+	LikedAt        *string  `json:"likedAt"`
+	AddedToAlbumAt *string  `json:"addedToAlbumAt"`
+	Albums         []string `json:"albums"`
 }
 
-// WaifuResponse represents the API response from waifu.im
-type WaifuResponse struct {
-	Images []WaifuImage `json:"images"`
+type Tag struct {
+	TagID           int    `json:"id"` // was tag_id
+	Name            string `json:"name"`
+	Slug            string `json:"slug"` // new
+	Description     string `json:"description"`
+	ReviewStatusTag string `json:"reviewStatus"` // was review_status (verify if present)
+	CreatorID       *int64 `json:"creatorId"`    // nullable
+	ImageCount      int    `json:"imageCount"`   // new
+	IsNSFW          bool   `json:"is_nsfw"`      // verify if this still exists in tags
+}
+
+func (m NSFWMode) String() string {
+	switch m {
+	case NSFWModeSFW:
+		return "False"
+	case NSFWModeNSFW:
+		return "True"
+	case NSFWModeAll:
+		return "All"
+	default:
+		return "False"
+	}
 }
 
 // NewWaifuClient creates a new Waifu.im API client
@@ -60,19 +106,15 @@ func NewWaifuClient(userAgent string) *WaifuClient {
 }
 
 // GetWaifuImages fetches waifu images from the API
-func (c *WaifuClient) GetWaifuImages(count int, isNSFW bool, isGIF bool) ([]WaifuImage, error) {
-	// Build query parameters
-	params := fmt.Sprintf("is_nsfw=%t", isNSFW)
-	
-	// Only add limit if count > 1 (API requirement)
-	if count > 1 {
-		params += fmt.Sprintf("&limit=%d", count)
+func (c *WaifuClient) GetWaifuImages(mode NSFWMode, count int) ([]WaifuImage, error) {
+	if count < 1 {
+		count = 1
 	}
-	
-	// Add GIF filter if requested
-	if isGIF {
-		params += "&gif=true"
+	if count > 10 {
+		count = 10
 	}
+
+	params := fmt.Sprintf("?IsNsfw=%s&pageSize=%d", mode.String(), count)
 
 	req, err := http.NewRequest(http.MethodGet, waifuBaseURL+params, nil)
 	if err != nil {
@@ -97,7 +139,7 @@ func (c *WaifuClient) GetWaifuImages(count int, isNSFW bool, isGIF bool) ([]Waif
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return result.Images, nil
+	return result.Items, nil
 }
 
 // DownloadWaifuImage downloads a waifu image from the provided URL
@@ -126,3 +168,4 @@ func (c *WaifuClient) DownloadWaifuImage(imageURL string) ([]byte, error) {
 
 	return data, nil
 }
+

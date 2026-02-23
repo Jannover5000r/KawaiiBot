@@ -192,7 +192,7 @@ func (b *Bot) sendWaifuImagesMessage(s *discordgo.Session, m *discordgo.MessageC
 
 	for _, img := range images {
 		// Generate unique filename
-		filename := fmt.Sprintf("waifu_%d_%d%s", img.ImageID, time.Now().Unix(), img.Extension)
+		filename := fmt.Sprintf("waifu_%d_%d%s", img.ID, time.Now().Unix(), img.Extension)
 		filepath := filepath.Join(picturesDir, filename)
 
 		// Download the image
@@ -305,62 +305,61 @@ func (b *Bot) handleCatgirlMessageCommand(s *discordgo.Session, m *discordgo.Mes
 
 // handleWaifuMessageCommand handles the !waifu message command
 func (b *Bot) handleWaifuMessageCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Try to delete the user's command message (ignore errors as we might not have permission)
+	// Try to delete the user's command message
 	go func() {
 		err := s.ChannelMessageDelete(m.ChannelID, m.ID)
 		if err != nil {
-			// Silently ignore deletion errors (common in DMs or without manage messages permission)
+			// Silently ignore deletion errors
 		}
 	}()
 
-	// Parse command arguments
+	// Parse command arguments - defaults: count=1, mode=SFW
 	args := strings.Fields(m.Content)
+	count := 1
+	contentMode := "sfw"
 
-	var count int = 1     // Default count
-	var nsfw string = "n" // Default to SFW
-	var gif string = "n"  // Default to no GIFs
-
-	// Track which parameters we've explicitly set
-	countSet := false
-	nsfwSet := false
-	gifSet := false
-
-	// Parse arguments - handle flexible positioning
-	for i := 1; i < len(args); i++ {
-		arg := strings.ToLower(args[i])
-
-		// Check if this is a number (count)
-		if parsedCount, err := strconv.Atoi(arg); err == nil && parsedCount >= 1 && parsedCount <= 10 {
-			if !countSet {
-				count = parsedCount
-				countSet = true
+	// Parse count argument (if present)
+	if len(args) > 1 {
+		if parsedCount, err := strconv.Atoi(args[1]); err == nil {
+			count = parsedCount
+			if count < 1 {
+				count = 1
 			}
-		} else if arg == "y" || arg == "yes" {
-			// Set nsfw if not already set, otherwise set gif if not already set
-			if !nsfwSet {
-				nsfw = "y"
-				nsfwSet = true
-			} else if !gifSet {
-				gif = "y"
-				gifSet = true
-			}
-		} else if arg == "n" || arg == "no" {
-			// Set nsfw if not already set, otherwise set gif if not already set
-			if !nsfwSet {
-				nsfw = "n"
-				nsfwSet = true
-			} else if !gifSet {
-				gif = "n"
-				gifSet = true
+			if count > 10 {
+				count = 10
 			}
 		}
+	}
+
+	// Parse content mode argument (if present)
+	if len(args) > 2 {
+		arg := strings.ToLower(args[2])
+		switch arg {
+		case "nsfw", "n", "ns":
+			contentMode = "nsfw"
+		case "all", "a", "both":
+			contentMode = "all"
+		case "sfw", "s", "safe":
+			contentMode = "sfw"
+		}
+	}
+
+	// Map string to NSFWMode
+	var mode api.NSFWMode
+	switch contentMode {
+	case "nsfw":
+		mode = api.NSFWModeNSFW
+	case "all":
+		mode = api.NSFWModeAll
+	default:
+		mode = api.NSFWModeSFW
 	}
 
 	// Show typing indicator
 	s.ChannelTyping(m.ChannelID)
 
 	// Fetch images
-	images, err := b.waifuAPI.GetWaifuImages(count, nsfw == "y", gif == "y")
+	images, err := b.waifuAPI.GetWaifuImages(mode, count)
 	if err != nil {
 		content := fmt.Sprintf("Sorry, I couldn't fetch waifu images: %v", err)
 		s.ChannelMessageSend(m.ChannelID, content)
@@ -388,22 +387,23 @@ func (b *Bot) handleHelpMessageCommand(s *discordgo.Session, m *discordgo.Messag
 		"• **count**: 1-10 pictures (optional, defaults to 1)\n" +
 		"• **nsfw**: `y/yes` or `n/no` (optional, defaults to no)\n\n" +
 		"**💜 Waifu Commands**\n" +
-		"├ `!waifu [count] [nsfw] [gif]` - Message command\n" +
-		"└ `/waifu <count> [nsfw] [gif]` - Slash command\n" +
+		"├ `!waifu [count] [content]` - Message command\n" +
+		"└ `/waifu [count] [content]` - Slash command\n" +
 		"• **count**: 1-10 pictures (optional, defaults to 1)\n" +
-		"• **nsfw**: `y/yes` or `n/no` (optional, defaults to no)\n" +
-		"• **gif**: `y/yes` or `n/no` (optional, defaults to no)\n\n" +
+		"• **content** (optional, defaults to SFW):\n" +
+		"  - `sfw` / `s` / `safe` - SFW only\n" +
+		"  - `nsfw` / `n` / `ns` - NSFW only\n" +
+		"  - `all` / `a` / `both` - Both SFW and NSFW\n\n" +
 		"**📅 Daily Webhook**\n" +
 		"├ `!webhook` - Toggle daily webhook (message command)\n" +
 		"└ `/webhook` - Toggle daily webhook (slash command)\n" +
-		"• Sends 1 waifu + 1 catgirl picture daily at 5 AM\n" +
+		"• Sends 1 waifu + 1 catgirl picture daily at 6 AM\n" +
 		"• Requires `WEBHOOK_URL` environment variable\n\n" +
 		"### 💡 Tips\n" +
-		"• Arguments can be in any order!\n" +
-		"• Examples: `!waifu y`, `!waifu 5 y`, `!waifu y 3 n`\n" +
+		"• Examples: `!waifu`, `!waifu 5`, `!waifu 3 nsfw`, `!waifu 7 all`\n" +
+		"• Slash command has dropdown menu for easy selection\n" +
 		"• Your command message will be automatically deleted\n\n" +
 		"*Powered by Nekos.moe API & Waifu.im* 💕"
-
 	s.ChannelMessageSend(m.ChannelID, helpText)
 }
 
@@ -499,40 +499,28 @@ func (b *Bot) registerCommands() error {
 				{
 					Type:        discordgo.ApplicationCommandOptionInteger,
 					Name:        "count",
-					Description: "Number of pictures (1-10)",
+					Description: "Number of pictures (1-10, default: 1)",
 					Required:    false,
 					MinValue:    &[]float64{1}[0],
 					MaxValue:    10,
 				},
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "nsfw",
-					Description: "Include NSFW content? (y=yes/n=no, defaults to no)",
+					Name:        "content",
+					Description: "Content type (default: SFW)",
 					Required:    false,
 					Choices: []*discordgo.ApplicationCommandOptionChoice{
 						{
-							Name:  "Yes",
-							Value: "y",
+							Name:  "SFW Only",
+							Value: "sfw",
 						},
 						{
-							Name:  "No",
-							Value: "n",
-						},
-					},
-				},
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "gif",
-					Description: "Include GIFs? (y=yes/n=no, defaults to no)",
-					Required:    false,
-					Choices: []*discordgo.ApplicationCommandOptionChoice{
-						{
-							Name:  "Yes",
-							Value: "y",
+							Name:  "NSFW Only",
+							Value: "nsfw",
 						},
 						{
-							Name:  "No",
-							Value: "n",
+							Name:  "All (SFW + NSFW)",
+							Value: "all",
 						},
 					},
 				},
@@ -672,35 +660,35 @@ func (b *Bot) handleWaifuSlashCommand(s *discordgo.Session, i *discordgo.Interac
 		return
 	}
 
-	// Get options
-	var count int
-	var nsfw string = "n" // Default to SFW
-	var gif string = "n"  // Default to no GIFs
+	// Get options - defaults: count=1, mode=SFW
+	count := 1
+	contentMode := "sfw"
 
 	for _, option := range data.Options {
-		switch option.Name {
-		case "count":
+		if option.Name == "count" {
 			count = int(option.IntValue())
-		case "nsfw":
-			nsfw = strings.ToLower(strings.TrimSpace(option.StringValue()))
-		case "gif":
-			gif = strings.ToLower(strings.TrimSpace(option.StringValue()))
+		}
+		if option.Name == "content" {
+			contentMode = strings.ToLower(strings.TrimSpace(option.StringValue()))
 		}
 	}
 
-	// Validate and default parameters
-	if nsfw != "y" && nsfw != "n" {
-		nsfw = "n" // Default to SFW for any invalid input
-	}
-	if gif != "y" && gif != "n" {
-		gif = "n" // Default to no GIFs for any invalid input
+	// Map string to NSFWMode
+	var mode api.NSFWMode
+	switch contentMode {
+	case "nsfw":
+		mode = api.NSFWModeNSFW
+	case "all":
+		mode = api.NSFWModeAll
+	default:
+		mode = api.NSFWModeSFW
 	}
 
 	// Show typing indicator
 	s.ChannelTyping(i.ChannelID)
 
 	// Fetch images
-	images, err := b.waifuAPI.GetWaifuImages(count, nsfw == "y", gif == "y")
+	images, err := b.waifuAPI.GetWaifuImages(mode, count)
 	if err != nil {
 		content := fmt.Sprintf("Sorry, I couldn't fetch waifu images: %v", err)
 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
@@ -778,7 +766,7 @@ func (b *Bot) sendWaifuImagesInteraction(s *discordgo.Session, i *discordgo.Inte
 
 	for _, img := range images {
 		// Generate unique filename
-		filename := fmt.Sprintf("waifu_%d_%d%s", img.ImageID, time.Now().Unix(), img.Extension)
+		filename := fmt.Sprintf("waifu_%d_%d%s", img.ID, time.Now().Unix(), img.Extension)
 		filepath := filepath.Join(picturesDir, filename)
 
 		// Download the image
