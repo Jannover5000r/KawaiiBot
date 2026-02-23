@@ -37,8 +37,8 @@ func New(nekosAPI *api.Client, waifuAPI *api.WaifuClient) *DailyWebhook {
 	dw := &DailyWebhook{
 		webhookURL: webhookURL,
 		nekosAPI:   nekosAPI,
-		//		waifuAPI:   waifuAPI,
-		enabled: true,
+		waifuAPI:   waifuAPI,
+		enabled:    true,
 	}
 
 	return dw
@@ -107,18 +107,18 @@ func (dw *DailyWebhook) SendDailyWebhook() error {
 	log.Println("[WEBHOOK] Fetching random waifu image...")
 
 	// For waifu.im, we'll try passing false as a neutral option to get mixed results
-	/*	waifuImages, err := dw.waifuAPI.GetWaifuImages(1, false, false)
-		if err != nil {
-			return fmt.Errorf("failed to fetch waifu image: %w", err)
-		}
-		log.Printf("[WEBHOOK] Fetched %d waifu images", len(waifuImages))
+	waifuImages, err := dw.waifuAPI.GetWaifuImages(2, 1)
+	if err != nil {
+		return fmt.Errorf("failed to fetch waifu image: %w", err)
+	}
+	log.Printf("[WEBHOOK] Fetched %d waifu images", len(waifuImages))
 
-		// Validate waifu image URLs
-		if len(waifuImages) > 0 {
-			log.Printf("[WEBHOOK] Waifu image details: ID=%d, URL=%s, Extension=%s, NSFW=%t",
-				waifuImages[0].ImageID, waifuImages[0].URL, waifuImages[0].Extension, waifuImages[0].IsNSFW)
-		}
-	*/
+	// Validate waifu image URLs
+	if len(waifuImages) > 0 {
+		log.Printf("[WEBHOOK] Waifu image details: ID=%d, URL=%s, Extension=%s, NSFW=%t",
+			waifuImages[0].ID, waifuImages[0].URL, waifuImages[0].Extension, waifuImages[0].IsNSFW)
+	}
+
 	// Fetch one catgirl image - use empty rating to get random mixed content
 	log.Println("[WEBHOOK] Fetching random catgirl image...")
 	catgirlImages, err := dw.nekosAPI.GetRandomImages(1, "")
@@ -152,7 +152,7 @@ func (dw *DailyWebhook) SendDailyWebhook() error {
 	}
 
 	// Add waifu embed if we got an image
-	/*	if len(waifuImages) > 0 {
+	if len(waifuImages) > 0 {
 		waifuEmbed := WebhookEmbed{
 			Title:       "💜 Daily Waifu",
 			Description: "Here's your beautiful waifu for today!",
@@ -160,7 +160,7 @@ func (dw *DailyWebhook) SendDailyWebhook() error {
 			Color:       0x9B59B6, // Purple color
 		}
 		payload.Embeds = append(payload.Embeds, waifuEmbed)
-	}*/
+	}
 
 	// Add catgirl embed if we got an image
 	if len(catgirlImages) > 0 {

@@ -2,6 +2,6 @@
 pictures/
 KawaiiBot*
 *.exe
-AGENTS.md
 WEBHOOK*
+bot_settings.json
 

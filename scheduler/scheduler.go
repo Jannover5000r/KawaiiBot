@@ -44,10 +44,10 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	}
 
 	s.running = true
-	
+
 	// Start the scheduling routine
 	go s.schedulingRoutine(ctx)
-	
+
 	log.Println("Scheduler started successfully")
 	return nil
 }
@@ -63,11 +63,11 @@ func (s *Scheduler) Stop() error {
 
 	close(s.stopChan)
 	s.running = false
-	
+
 	if s.ticker != nil {
 		s.ticker.Stop()
 	}
-	
+
 	log.Println("Scheduler stopped")
 	return nil
 }
@@ -75,14 +75,14 @@ func (s *Scheduler) Stop() error {
 // schedulingRoutine runs the main scheduling loop
 func (s *Scheduler) schedulingRoutine(ctx context.Context) {
 	// Calculate time until next midnight
-	timeUntilMidnight := s.getTimeUntilMidnight()
-	
-	log.Printf("First daily webhook will be sent in %v", timeUntilMidnight)
-	
+	timeUntilNextSend := s.getTimeUntilNextSend()
+
+	log.Printf("First daily webhook will be sent in %v", timeUntilNextSend)
+
 	// Create timer for first execution at midnight
-	timer := time.NewTimer(timeUntilMidnight)
+	timer := time.NewTimer(timeUntilNextSend)
 	defer timer.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -94,42 +94,49 @@ func (s *Scheduler) schedulingRoutine(ctx context.Context) {
 		case <-timer.C:
 			// It's midnight! Send the daily webhook
 			s.sendDailyWebhook()
-			
+
 			// Reset timer for next midnight (24 hours from now)
 			// Calculate time until next midnight and reset timer
-				timeUntilNextMidnight := s.getTimeUntilMidnight()
-				log.Printf("Next daily webhook will be sent in %v", timeUntilNextMidnight)
-				timer.Reset(timeUntilNextMidnight)
+			timeUntilNextSend := s.getTimeUntilNextSend()
+			log.Printf("Next daily webhook will be sent in %v", timeUntilNextSend)
+			timer.Reset(timeUntilNextSend)
 		}
 	}
 }
 
-// getTimeUntilMidnight calculates the time until the next midnight
-func (s *Scheduler) getTimeUntilMidnight() time.Duration {
+func (s *Scheduler) getTimeUntilNextSend() time.Duration {
 	now := time.Now()
-	
-	// Calculate next midnight
-	nextMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Add(24 * time.Hour)
-	
-	timeUntil := nextMidnight.Sub(now)
-	log.Printf("[SCHEDULER] Current time: %s, Next midnight: %s, Time until: %v", now.Format("2006-01-02 15:04:05"), nextMidnight.Format("2006-01-02 15:04:05"), timeUntil)
+
+	// Create target time: today at 5:00:00 AM in local timezone
+	target := time.Date(now.Year(), now.Month(), now.Day(), 5, 0, 0, 0, now.Location())
+
+	// If 5 AM today has already passed, schedule for tomorrow
+	if now.After(target) || now.Equal(target) {
+		target = target.Add(24 * time.Hour)
+	}
+
+	timeUntil := target.Sub(now)
+	log.Printf("[SCHEDULER] Current time: %s, Next 5AM: %s, Time until: %v",
+		now.Format("2006-01-02 15:04:05"),
+		target.Format("2006-01-02 15:04:05"),
+		timeUntil)
 	return timeUntil
 }
 
 // sendDailyWebhook sends the daily webhook
 func (s *Scheduler) sendDailyWebhook() {
 	log.Println("[SCHEDULER] Attempting to send daily webhook...")
-	
+
 	// Check if webhook is still enabled
 	if !s.dailyWebhook.IsEnabled() {
 		log.Println("[SCHEDULER] Daily webhook is disabled, skipping")
 		return
 	}
-	
+
 	// Get webhook status for logging
 	enabled, url := s.dailyWebhook.GetStatus()
 	log.Printf("[SCHEDULER] Webhook status - Enabled: %v, URL configured: %v", enabled, url != "")
-	
+
 	// Send the webhook with retry logic
 	maxRetries := 3
 	for i := 0; i < maxRetries; i++ {
@@ -139,9 +146,9 @@ func (s *Scheduler) sendDailyWebhook() {
 			log.Println("[SCHEDULER] Daily webhook sent successfully")
 			return
 		}
-		
+
 		log.Printf("[SCHEDULER] Failed to send daily webhook (attempt %d/%d): %v", i+1, maxRetries, err)
-		
+
 		if i < maxRetries-1 {
 			// Wait before retrying (exponential backoff)
 			waitTime := time.Duration(i+1) * 5 * time.Minute
@@ -149,7 +156,7 @@ func (s *Scheduler) sendDailyWebhook() {
 			time.Sleep(waitTime)
 		}
 	}
-	
+
 	log.Printf("[SCHEDULER] Failed to send daily webhook after %d attempts", maxRetries)
 }
 
@@ -165,7 +172,8 @@ func (s *Scheduler) ForceSend() error {
 	if !s.dailyWebhook.IsEnabled() {
 		return fmt.Errorf("daily webhook is disabled")
 	}
-	
+
 	go s.sendDailyWebhook()
 	return nil
 }
+
