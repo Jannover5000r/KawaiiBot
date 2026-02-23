@@ -547,7 +547,7 @@ func (b *Bot) registerCommands() error {
 			Description: "Toggle daily webhook for waifu/catgirl pictures",
 		},
 		{
-			Name:        "forceWebhook",
+			Name:        "forcewebhook",
 			Description: "force send a WebHook for testing",
 		},
 	}
@@ -596,7 +596,7 @@ func (b *Bot) interactionHandler(s *discordgo.Session, i *discordgo.InteractionC
 		b.handleHelpSlashCommand(s, i)
 	case "webhook":
 		b.handleWebhookSlashCommand(s, i)
-	case "forceWebhook":
+	case "forcewebhook":
 		b.forceWebHookSlashCommand(s, i)
 	}
 }
