@@ -90,7 +90,7 @@ func New(token string) (*Bot, error) {
 }
 
 // Start opens the websocket connection and registers slash commands
-func (b *Bot) Start(ctx context.Context) error {
+func (b *Bot) Start(ctx context.Context, locEnv string) error {
 	if err := b.session.Open(); err != nil {
 		return fmt.Errorf("failed to open connection: %w", err)
 	}
@@ -104,7 +104,7 @@ func (b *Bot) Start(ctx context.Context) error {
 	go b.cleanupRoutine(ctx)
 
 	// Start scheduler
-	if err := b.scheduler.Start(ctx); err != nil {
+	if err := b.scheduler.Start(ctx, locEnv); err != nil {
 		fmt.Printf("Warning: failed to start scheduler: %v\n", err)
 	}
 

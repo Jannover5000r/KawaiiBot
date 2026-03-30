@@ -34,9 +34,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error creating bot: %v", err)
 	}
-
+	locEnv := os.Getenv("LOCATION_ENV")
 	// Start bot
-	if err := discordBot.Start(ctx); err != nil {
+	if err := discordBot.Start(ctx, locEnv); err != nil {
 		log.Fatalf("Error starting bot: %v", err)
 	}
 

@@ -11,6 +11,8 @@ import (
 	"KawaiiBot/webhook"
 )
 
+var location *time.Location
+
 // Scheduler handles scheduled tasks
 type Scheduler struct {
 	dailyWebhook *webhook.DailyWebhook
@@ -29,7 +31,13 @@ func New(dailyWebhook *webhook.DailyWebhook) *Scheduler {
 }
 
 // Start starts the scheduler
-func (s *Scheduler) Start(ctx context.Context) error {
+func (s *Scheduler) Start(ctx context.Context, locEnv string) error {
+	var locErr error
+	location, locErr = time.LoadLocation(locEnv)
+	if locErr != nil {
+		log.Fatalf("Failed to load timezone: %v", locErr)
+	}
+	log.Printf("Timezone set to: %s", location)
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -50,6 +58,10 @@ func (s *Scheduler) Start(ctx context.Context) error {
 
 	log.Println("Scheduler started successfully")
 	return nil
+}
+
+func getTime() time.Time {
+	return time.Now().In(location)
 }
 
 // Stop stops the scheduler
@@ -105,7 +117,7 @@ func (s *Scheduler) schedulingRoutine(ctx context.Context) {
 }
 
 func (s *Scheduler) getTimeUntilNextSend() time.Duration {
-	now := time.Now()
+	now := getTime()
 
 	// Create target time: today at 5:00:00 AM in local timezone
 	target := time.Date(now.Year(), now.Month(), now.Day(), 5, 0, 0, 0, now.Location())
@@ -176,4 +188,3 @@ func (s *Scheduler) ForceSend() error {
 	go s.sendDailyWebhook()
 	return nil
 }
-
