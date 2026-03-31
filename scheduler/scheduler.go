@@ -35,7 +35,7 @@ func (s *Scheduler) Start(ctx context.Context, locEnv string) error {
 	var locErr error
 	location, locErr = time.LoadLocation(locEnv)
 	if locErr != nil {
-		log.Fatalf("Failed to load timezone: %v", locErr)
+		return fmt.Errorf("failed to load timezone %q: %w", locEnv, locErr)
 	}
 	log.Printf("Timezone set to: %s", location)
 	s.mutex.Lock()
