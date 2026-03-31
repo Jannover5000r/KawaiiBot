@@ -7,7 +7,9 @@ import (
 	"log"
 	"sync"
 	"time"
-	"time/tzdata"
+
+	_ "time/tzdata"
+
 	"KawaiiBot/webhook"
 )
 
@@ -119,16 +121,16 @@ func (s *Scheduler) schedulingRoutine(ctx context.Context) {
 func (s *Scheduler) getTimeUntilNextSend() time.Duration {
 	now := getTime()
 
-	// Create target time: today at 5:00:00 AM in local timezone
-	target := time.Date(now.Year(), now.Month(), now.Day(), 5, 0, 0, 0, now.Location())
+	// Create target time: today at 6:00:00 AM in local timezone
+	target := time.Date(now.Year(), now.Month(), now.Day(), 6, 0, 0, 0, now.Location())
 
-	// If 5 AM today has already passed, schedule for tomorrow
+	// If 6 AM today has already passed, schedule for tomorrow
 	if now.After(target) || now.Equal(target) {
 		target = target.Add(24 * time.Hour)
 	}
 
 	timeUntil := target.Sub(now)
-	log.Printf("[SCHEDULER] Current time: %s, Next 5AM: %s, Time until: %v",
+	log.Printf("[SCHEDULER] Current time: %s, Next 6AM: %s, Time until: %v",
 		now.Format("2006-01-02 15:04:05"),
 		target.Format("2006-01-02 15:04:05"),
 		timeUntil)
